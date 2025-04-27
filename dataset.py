@@ -21,10 +21,11 @@ def get_dataset(path, tokenizer, max_size=1000000000):
         question_tokenized = tokenizer.encode(
             sample["question"] + "\n", add_special_tokens=True
         )
-        steps_tokenized = [
-            tokenizer.encode(s + "\n", add_special_tokens=False)
-            for s in sample["steps"]
-        ]
+        # steps_tokenized = [
+        #     tokenizer.encode(s + "\n", add_special_tokens=False)
+        #     for s in sample["steps"]
+        # ]
+        steps_tokenized = []
         answer_tokenized = tokenizer.encode(
             "### " + sample["answer"], add_special_tokens=False
         ) + [tokenizer.eos_token_id]
@@ -62,14 +63,14 @@ def get_dataset(path, tokenizer, max_size=1000000000):
 
     # verify
     d = data[0]
-    complete = d["question"] + "\n" + "\n".join(d["steps"]) + "\n### " + d["answer"]
+    complete = d["question"] + "\n### " + d["answer"]
     complete_tokenized = tokenizer.encode(complete, add_special_tokens=True) + [
         tokenizer.eos_token_id
     ]
     assert (
         complete_tokenized
         == dataset[0]["question_tokenized"]
-        + list(itertools.chain.from_iterable(dataset[0]["steps_tokenized"]))
+        # + list(itertools.chain.from_iterable(dataset[0]["steps_tokenized"]))
         + dataset[0]["answer_tokenized"]
     )
 
@@ -197,16 +198,17 @@ def get_question_latent_dataset(
 
     def process_dataset(sample):
 
-        if configs.pad_latent_to_max:
-            max_latent_stage = configs.max_latent_stage
-        else:
-            max_latent_stage = min(
-                configs.max_latent_stage, len(sample["steps_tokenized"])
-            )
+        # if configs.pad_latent_to_max:
+        #     max_latent_stage = configs.max_latent_stage
+        # else:
+        #     max_latent_stage = min(
+        #         configs.max_latent_stage, len(sample["steps_tokenized"])
+        #     )
 
-        k = min(max_latent_stage, scheduled_stage)
+        # k = min(max_latent_stage, scheduled_stage)
 
-        k *= configs.c_thought
+        # k *= configs.c_thought
+        k = configs.c_thought
 
         tokens = (
             sample["question_tokenized"]
@@ -242,44 +244,13 @@ def get_cot_latent_dataset(
 
     def process_dataset(sample):
 
-        if (
-            random.random() < configs.uniform_prob
-        ):  # with some prob, randomly sample stage
-            scheduled_stage_to_train = random.choice(
-                list(range(len(sample["steps_tokenized"]) + 1))
-            )
-        else:
-            scheduled_stage_to_train = scheduled_stage
-
-        if scheduled_stage_to_train > configs.max_latent_stage:
-            n_skip_steps = 10000  # skip all
-            if configs.pad_latent_to_max:
-                n_latent_tokens = configs.max_latent_stage
-            else:
-                n_latent_tokens = min(
-                    len(sample["steps_tokenized"]), configs.max_latent_stage
-                )
-
-        else:
-            n_skip_steps, n_latent_tokens = (
-                scheduled_stage_to_train,
-                scheduled_stage_to_train,
-            )
-
-        if configs.no_cot:
-            n_skip_steps = 100  # skip all step
-            n_latent_tokens = 0
-
-        n_latent_tokens *= configs.c_thought
+        n_latent_tokens = configs.c_thought
 
         tokens = (
             sample["question_tokenized"]
             + ([] if no_special_marker else [start_id])
             + [latent_id] * n_latent_tokens
             + ([] if no_special_marker else [end_id])
-            + list(
-                itertools.chain.from_iterable(sample["steps_tokenized"][n_skip_steps:])
-            )
             + sample["answer_tokenized"]
         )
 
