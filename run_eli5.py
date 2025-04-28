@@ -33,7 +33,7 @@ import json
 import gc
 import argparse
 import functools
-from utils import Config, set_seed, evaluate_nlg
+from utils import Config, set_seed, evaluate_nlg, evaluate_with_llm
 from datasets import load_dataset
 
 
@@ -165,8 +165,9 @@ def main():
     # val_indices = all_indices[train_size:train_size+val_size]
     # train_data = [all_data[i] for i in train_indices]
     # val_data = [all_data[i] for i in val_indices]
-    train_json_path = os.path.join('data', "eli5_train_temp.json")
-    val_json_path = os.path.join('data', "eli5_val_temp.json")
+    train_json_path = os.path.join('data', "eli5_train_319k.json")
+    val_json_path = os.path.join('data', "eli5_val_1k.json")
+    test_json_path = os.path.join('data', "eli5_val_5k.json")
 
     if rank == 0:
         print(parallel_model)
@@ -185,6 +186,9 @@ def main():
     
     with open(val_json_path, 'r') as f:
         val_data = json.load(f)
+        
+    with open(test_json_path, 'r') as f:
+        test_data = json.load(f)
 
     
     # prepare the ground truth answer and cot for evaluation
@@ -194,10 +198,18 @@ def main():
     question_val = [d["question"] for d in val_data]
     answers_val = [d["answer"].strip() for d in val_data]
     cot_val = ["" for _ in val_data]  # No CoT in ELI5
+    
+    # question_test = [d["question"] for d in test_data]
+    # answers_test = [d["answer"].strip() for d in test_data]
+    # cot_test = ["" for _ in test_data]  # No CoT in ELI5
 
     base_dataset_valid = get_dataset(
         configs.val_path, tokenizer, max_size=32 if configs.debug else 100000000
     )
+    
+    # base_dataset_test = get_dataset(
+    #     test_json_path, tokenizer, max_size=32 if configs.debug else 100000000
+    # )
 
     if not configs.only_eval:
         base_dataset_train = get_dataset(
@@ -207,7 +219,7 @@ def main():
     if "gsm" in configs.val_path:
         max_new_tokens = 64
     else:
-        max_new_tokens = 128
+        max_new_tokens = 256
 
     total_train_steps = 0
 
@@ -487,6 +499,32 @@ def main():
 
             pbar.close()
             print(f"Device {rank}: Cor={cor}, CoT={cor_cot}, Total={total}")
+            
+            ############ LLM as a judge ############
+            eval_indices = random.sample(range(len(question_val)), min(50, len(question_val)))
+            accuracy_scores = []
+            clarity_scores = []
+            completeness_scores = []
+            conciseness_scores = []
+            engagement_scores = []
+            for idx in tqdm(eval_indices):
+                question = question_val[idx]
+                explanation_with_latent = predictions[idx]
+                eval_latent = evaluate_with_llm(question, explanation_with_latent)
+                if eval_latent is None:
+                    continue
+                accuracy_scores.append(eval_latent["accuracy_score"])
+                clarity_scores.append(eval_latent["clarity_score"])
+                completeness_scores.append(eval_latent["completeness_score"])
+                conciseness_scores.append(eval_latent["conciseness_score"])
+                engagement_scores.append(eval_latent["engagement_score"])
+            
+            avg_accuracy = sum(accuracy_scores) / len(accuracy_scores)
+            avg_clarity = sum(clarity_scores) / len(clarity_scores)
+            avg_completeness = sum(completeness_scores) / len(completeness_scores)
+            avg_conciseness = sum(conciseness_scores) / len(conciseness_scores)
+            avg_engagement = sum(engagement_scores) / len(engagement_scores)
+            
 
         nlg_metrics = evaluate_nlg(predictions, references)
         if wandb_run:
@@ -494,7 +532,12 @@ def main():
                 "eval/rouge1": nlg_metrics['rouge']['rouge1'],
                 "eval/rouge2": nlg_metrics['rouge']['rouge2'],
                 "eval/rougeL": nlg_metrics['rouge']['rougeL'],
-                "eval/bleu": nlg_metrics['bleu']
+                "eval/bleu": nlg_metrics['bleu'],
+                "eval/accuracy": avg_accuracy,
+                "eval/clarity": avg_clarity,
+                "eval/completeness": avg_completeness,
+                "eval/conciseness": avg_conciseness,
+                "eval/engagement": avg_engagement,
             })
         dist.all_reduce(cor_cot, op=dist.ReduceOp.SUM)
         dist.all_reduce(cor, op=dist.ReduceOp.SUM)
