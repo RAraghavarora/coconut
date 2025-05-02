@@ -1,26 +1,25 @@
-# need 4 gpus
-
 project: coconut
 save_path: ./saved_model
 name: eli5_vanilla
 
-only_eval: False
+# Evaluation mode
+only_eval: True
 
+# Disable all special features
 coconut: False
 cot: False
-no_thoughts: False
-no_cot: False
+no_thoughts: True
+no_cot: True
 
-c_thought: 1
+c_thought: 0  # No latent thoughts needed
 epochs_per_stage: 3
-max_latent_stage: 1
-pad_latent_to_max: True
+max_latent_stage: 0
+pad_latent_to_max: False
 
 save_only_improve: False
 uniform_prob: 0.0
 model_id: openai-community/gpt2
-# load_model_path: saved_model/eli5_coco/checkpoint_1
-load_model_path: None
+load_model_path: None  # No finetuned model to load
 seed: 42
 resume: 0
 bf16: False
@@ -30,6 +29,6 @@ reset_optimizer: False
 batch_size_training: 8
 debug: False
 gradient_accumulation_steps: 1
-num_epochs: 20
+num_epochs: 1  # Only need one epoch for evaluation
 lr: !!float "1e-4"
 weight_decay: 0.01

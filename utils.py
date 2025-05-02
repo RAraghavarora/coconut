@@ -9,6 +9,8 @@ import nltk
 from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
 
 nltk.download('punkt')
+nltk.download('wordnet')
+nltk.download('omw-1.4')
 
 
 class Config:
@@ -109,8 +111,11 @@ def evaluate_with_llm(question, explanation):
       "overall_assessment": "string"
     }}
     """
-    
-    response = call_llm_api(evaluation_prompt)
+    try:
+        response = call_llm_api(evaluation_prompt)
+    except:
+        # OpenAI request block, or out of credits, ig
+        return None
     try:
         output = json.loads(response)
     except json.decoder.JSONDecodeError:
